@@ -2,7 +2,7 @@
 # Author: Visweshwaran Baskaran
 # Date: 09-10-2023
 # References:
-#	[1]  	https://stackoverflow.com/questions/70824666/how-to-cross-compile-for-arm-on-ubuntu-conditionally#conditionally
+#	[1] https://stackoverflow.com/questions/70824666/how-to-cross-compile-for-arm-on-ubuntu-conditionally
 
 CC=$(CROSS_COMPILE)gcc
 CFLAGS= -Wall -Werror
