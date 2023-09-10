@@ -18,5 +18,12 @@ void test_validate_my_username()
      * TODO: Replace the line below with your code here as described above to verify your /conf/username.txt 
      * config file and my_username() functions are setup properly
      */ 
-	TEST_ASSERT_EQUAL_STRING_MESSAGE(my_username(), malloc_username_from_conf_file(),"fixed");
+     //A2 update: Added reference variable to free the memory allocated.
+     char * username_conf = malloc_username_from_conf_file()
+	TEST_ASSERT_EQUAL_STRING_MESSAGE(my_username(), username_conf,"Usernames mismatch, To be fixed");
+	
+	free(username_conf);
+	username_conf = NULL;
+	
+	
 }
