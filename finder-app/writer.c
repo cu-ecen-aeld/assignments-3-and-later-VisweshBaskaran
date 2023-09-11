@@ -21,7 +21,7 @@ References:
 #include <stdlib.h>
 
 #define EXIT_ERROR 1
-
+#define SYSCALL_ERROR -1
 int main(int argc, char* argv[])
 {
 	
@@ -33,7 +33,7 @@ int main(int argc, char* argv[])
 	//Checking for number of arguments
 	if(argc != 3)
 	{
-		syslog(LOG_ERR, "Invalid Number of Arguments.\nEntered %d arguments.\nEnter 2 arguments in the following order writefile writestr\nError number: %d", argc, errno);
+		syslog(LOG_ERR, "Invalid Number of Arguments. Entered %d arguments. Enter 2 arguments in the following order writefile writestr Error number: %d", argc, errno);
 		return EXIT_ERROR;
 		
 	}
@@ -43,15 +43,20 @@ int main(int argc, char* argv[])
 	writestr = argv[2];
 	int fd;
 	
+	//creat(file) is the same system call as open (file, O_WRONLY | O_CREAT | O_TRUNC).
+	//Second argument is an octal value 0664 gives user and group read, write permission and others read only permission. 
 	fd = creat(writefile, 0664);
-	if (fd == -1)
+	
+	//In case of failure to open file directory, creat returns -1 in case of error
+	if (fd == SYSCALL_ERROR)
 	{
 		syslog(LOG_ERR, "File directory: %s does not exists. Error number: %d", writefile, errno);
 		return EXIT_ERROR;
 	}
 	
+	//writing writestr to fd, write() returns bytes written and returns -1 in case of error
 	write_nbytes = write(fd, writestr, strlen(writestr));
-	if(write_nbytes == -1)
+	if(write_nbytes == SYSCALL_ERROR)
 	{
 		syslog(LOG_ERR, "Could not write: %s to %s. Error number: %d",writestr, writefile, errno);
 		return EXIT_ERROR;
@@ -60,7 +65,7 @@ int main(int argc, char* argv[])
 		syslog(LOG_DEBUG, "Writing %s to %s",writestr,writefile);
 	
 	closelog();
-	if(close(fd) == -1)
+	if(close(fd) == SYSCALL_ERROR)
 		syslog(LOG_ERR, "Error in closing file. Error number: %d", errno);
 	return 0;
 	

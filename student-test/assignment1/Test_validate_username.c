@@ -19,11 +19,8 @@ void test_validate_my_username()
      * config file and my_username() functions are setup properly
      */ 
      //A2 update: Added reference variable to free the memory allocated.
-     char * username_conf = malloc_username_from_conf_file()
+     char * username_conf = malloc_username_from_conf_file();
 	TEST_ASSERT_EQUAL_STRING_MESSAGE(my_username(), username_conf,"Usernames mismatch, To be fixed");
-	
 	free(username_conf);
 	username_conf = NULL;
-	
-	
 }
