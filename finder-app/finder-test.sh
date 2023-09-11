@@ -10,7 +10,8 @@ WRITESTR=AELD_IS_FUN
 WRITEDIR=/tmp/aeld-data
 username=$(cat conf/username.txt)
 
-if [ $# -lt 3 ]
+# A2 Update: modified to -lt 2 as WRITESTR always takes default value with -lt 3
+if [ $# -lt 2 ]
 then
 	echo "Using default value ${WRITESTR} for string to write"
 	if [ $# -lt 1 ]
@@ -22,6 +23,7 @@ then
 else
 	NUMFILES=$1
 	WRITESTR=$2
+	#WRITEDIR will remain as defined in line 10, if 3rd argument is not specified which is usually the case. 
 	WRITEDIR=/tmp/aeld-data/$3
 fi
 
@@ -31,30 +33,30 @@ echo "Writing ${NUMFILES} files containing string ${WRITESTR} to ${WRITEDIR}"
 
 rm -rf "${WRITEDIR}"
 
+
 # create $WRITEDIR if not assignment1
 assignment=`cat ../conf/assignment.txt`
-
-if [ $assignment != 'assignment1' ]
+if [ $assignment = 'assignment2' ]
 then
 	mkdir -p "$WRITEDIR"
-
 	#The WRITEDIR is in quotes because if the directory path consists of spaces, then variable substitution will consider it as multiple argument.
 	#The quotes signify that the entire string in WRITEDIR is a single string.
 	#This issue can also be resolved by using double square brackets i.e [[ ]] instead of using quotes.
-	if [ -d "$WRITEDIR" ]
-	then
+	if [ -d "$WRITEDIR" ]	
+	then		
 		echo "$WRITEDIR created"
 	else
 		exit 1
 	fi
 fi
-#echo "Removing the old writer utility and compiling as a native application"
-#make clean
-#make
+
+echo "Removing the old writer utility and compiling as a native application"
+make clean
+make
 
 for i in $( seq 1 $NUMFILES)
 do
-	./writer.sh "$WRITEDIR/${username}$i.txt" "$WRITESTR"
+	./writer "$WRITEDIR/${username}$i.txt" "$WRITESTR"
 done
 
 OUTPUTSTRING=$(./finder.sh "$WRITEDIR" "$WRITESTR")

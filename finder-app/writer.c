@@ -8,6 +8,7 @@ References:
 	[1] https://www.scaler.com/topics/c/command-line-arguments-in-c/
 	[2] Linux System Programming Talking Directly to the Kernel and C Library by Robert Love
 	[3] https://stackoverflow.com/questions/33114152/what-to-do-if-a-posix-close-call-fails
+	[4] https://www.gnu.org/software/libc/manual/html_node/Syslog-Example.html
 
 */
 #include <syslog.h>
@@ -17,6 +18,7 @@ References:
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <stdlib.h>
 
 #define EXIT_ERROR 1
 
@@ -25,13 +27,8 @@ int main(int argc, char* argv[])
 	
 	char *writefile, *writestr;
 	ssize_t write_nbytes;
-	/*
-	@brief Setting up syslog utility using LOG_USER facility
-	@param priority: NULL
-	@param option: LOG_PID
-	@param facility: LOG_USER
-	*/
-	openlog(NULL,LOG_PID,LOG_USER);
+	//Setting up syslog utility using LOG_USER facility. Using A2 as identification string
+	openlog("A2",LOG_CONS | LOG_PID,LOG_USER);
 	
 	//Checking for number of arguments
 	if(argc != 3)
@@ -46,7 +43,7 @@ int main(int argc, char* argv[])
 	writestr = argv[2];
 	int fd;
 	
-	fd = creat(writefile, 644);
+	fd = creat(writefile, 0664);
 	if (fd == -1)
 	{
 		syslog(LOG_ERR, "File directory: %s does not exists. Error number: %d", writefile, errno);
@@ -65,7 +62,6 @@ int main(int argc, char* argv[])
 	closelog();
 	if(close(fd) == -1)
 		syslog(LOG_ERR, "Error in closing file. Error number: %d", errno);
-	
 	return 0;
 	
 }
