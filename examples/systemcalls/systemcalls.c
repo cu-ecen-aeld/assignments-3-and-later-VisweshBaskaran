@@ -1,5 +1,15 @@
 #include "systemcalls.h"
-
+#include <stdarg.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <syslog.h>
+#include <errno.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <fcntl.h>
 /**
  * @param cmd the command to execute with system()
  * @return true if the command in @param cmd was executed
@@ -16,6 +26,10 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+
+	int sys_return = system(cmd);
+	if(sys_return != 0)
+	return false;
 
     return true;
 }
@@ -47,7 +61,7 @@ bool do_exec(int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    //command[count] = command[count];
 
 /*
  * TODO:
@@ -59,9 +73,51 @@ bool do_exec(int count, ...)
  *
 */
 
-    va_end(args);
+	pid_t pid;
+	
+	openlog("A3_do_exec", LOG_PID, LOG_USER);
+	
+	pid = fork();
+	//On failure, returns -1
+	if(pid == -1)
+	{
+		syslog(LOG_ERR,"No child process created. Fork failed. Error no: %d",errno);
+		return false;
+	}
+	
+	if (pid == 0) //Child process
+	{
+	//Fork returns 0 in the child and PID in the parent on success
+		syslog(LOG_DEBUG, "Child created");
+		int ret = execv(command[0], command);
+		if(ret == -1)
+		{
+			syslog(LOG_ERR, "execv() failed. Error no: %d", errno);
+			exit(EXIT_FAILURE);
+		}	
+	}
+	else if (pid > 0) //Parent process
+	{
+		int status;
+		//pid_t pid_wait = waitpid(pid_fork)
+		if(waitpid(pid, &status, 0) == -1)
+		{
+			syslog(LOG_ERR, "waitpid() failed. Error no: %d", errno);
+			return false;		
+		}
+		else if (WIFEXITED(status))
+		{
+			if (WEXITSTATUS(status) != 0)
+			return false;
+		}
+		else
+			return false;
+	}
 
-    return true;
+    	va_end(args);
+    	closelog();
+
+    	return true;
 }
 
 /**
@@ -82,7 +138,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    //command[count] = command[count];
 
 
 /*
@@ -92,8 +148,53 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+	pid_t pid;
+	openlog("A3_do_exec_redirect", LOG_PID, LOG_USER);
+	int fd = creat(outputfile, 0664);
+	if (fd == -1)
+	{
+		syslog(LOG_ERR, "File directory: %s does not exists. Error number: %d", outputfile, errno);
+		return false;
+	}
+	pid = fork();
+	switch(pid)
+	{
+	case -1:
+		syslog(LOG_ERR,"No child process created. Fork failed. Error no: %d",errno);
+		return false;
+	case 0:
+		//1 : stdout
+		if(dup2(fd,1) < 0)
+		{
+			syslog(LOG_ERR, "dup2() failed. Error no: %d", errno);
+			return false;
+		}
+		close(fd);
+		int ret = execv(command[0], command);
+		if(ret == -1)
+		{
+			syslog(LOG_ERR, "execv() failed. Error no: %d", errno);
+			exit(EXIT_FAILURE);
+		}
+	default:
+		close(fd);
+		int status;
+		if(waitpid(pid, &status, 0) == -1)
+		{
+			syslog(LOG_ERR, "waitpid() failed. Error no: %d", errno);
+			return false;		
+		}
+		else if (WIFEXITED(status))
+		{
+			if (WEXITSTATUS(status) != 0)
+			return false;
+		}
+		else
+			return false;	
+	}
+	
 
-    va_end(args);
-
-    return true;
+    	va_end(args);
+    	closelog();
+    	return true;
 }
