@@ -51,6 +51,7 @@ fi
 
 echo "Adding the Image in outdir"
 cp ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ${OUTDIR}
+
 echo "Creating the staging directory for the root filesystem"
 cd "$OUTDIR"
 if [ -d "${OUTDIR}/rootfs" ]
@@ -61,19 +62,19 @@ fi
 
 # TODO: Create necessary base directories
 # since $OUTDIR/rootfs was deleted in the case it existed through lines 56-60, we need to create the directory again 
-mkdir ${OUTDIR}/rootfs 
+mkdir ${OUTDIR}/rootfs
 cd ${OUTDIR}/rootfs
-mkdir -p bin dev etc home lib proc sbin sys tmp usr var
+mkdir -p bin dev etc home lib lib64 proc sbin sys tmp usr var
 mkdir -p usr/bin usr/lib usr/sbin
 mkdir -p var/log
+
 cd "$OUTDIR"
 if [ ! -d "${OUTDIR}/busybox" ]
 then
 git clone git://busybox.net/busybox.git
     cd busybox
     git checkout ${BUSYBOX_VERSION}
-    # TODO:  Configure busybox 
-    # Default config to enable all features
+    # TODO:  Configure busybox
     make distclean
     make defconfig
 else
@@ -81,30 +82,29 @@ else
 fi
 
 # TODO: Make and install busybox
-make -j4 CONFIG_PREFIX=${OUTDIR}/rootfs ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} install
-cd ${OUTDIR}/rootfs
+make CONFIG_PREFIX=${OUTDIR}/rootfs ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} install
 
+cd ${OUTDIR}/rootfs
 echo "Library dependencies"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # TODO: Add library dependencies to rootfs
-SYSROOT=$(${CROSS_COMPILE}gcc --print-sysroot)
-echo "$SYSROOT"
-
-cp -a --remove-destination $SYSROOT/lib/ld-linux-aarch64.so.1 lib
-cp -a --remove-destination $SYSROOT/lib64/ld-2.31.so lib64
-cp -a --remove-destination $SYSROOT/lib64/libm.so.6 lib64
-cp -a --remove-destination $SYSROOT/lib64/libresolv.so.2 lib64
-cp -a --remove-destination $SYSROOT/lib64/libc.so.6 lib64
-cp -a --remove-destination $SYSROOT/lib64/libm-2.31.so lib64
-cp -a --remove-destination $SYSROOT/lib64/libresolv-2.31.so lib64
-cp -a --remove-destination $SYSROOT/lib64/libc-2.31.so lib64
-
+SYSROOT=$(${CROSS_COMPILE}gcc -print-sysroot)
+#Program interpreter libraries
+cp -a $SYSROOT/lib/ld-linux-aarch64.so.1 lib
+#Shared libraries (Reference: demo video logs)
+cp -a $SYSROOT/lib64/ld-2.31.so lib64
+cp -a $SYSROOT/lib64/libm.so.6 lib64
+cp -a $SYSROOT/lib64/libresolv.so.2 lib64
+cp -a $SYSROOT/lib64/libc.so.6 lib64
+cp -a $SYSROOT/lib64/libm-2.31.so lib64
+cp -a $SYSROOT/lib64/libresolv-2.31.so lib64
+cp -a $SYSROOT/lib64/libc-2.31.so lib64
 
 # TODO: Make device nodes
-sudo mknod -m 666 ${OUTDIR}/rootfs/dev/null c 1 3
-sudo mknod -m 600 ${OUTDIR}/rootfs/dev/console c 5 1
+sudo mknod -m 666 dev/null c 1 3
+sudo mknod -m 600 dev/console c 5 1
 
 # TODO: Clean and build the writer utility
 cd ${FINDER_APP_DIR}
@@ -114,15 +114,15 @@ make CROSS_COMPILE=${CROSS_COMPILE}
 # TODO: Copy the finder related scripts and executables to the /home directory
 # on the target rootfs
 # Reference: Demo video # ls /home
+cp ${FINDER_APP_DIR}/autorun-qemu.sh ${OUTDIR}/rootfs/home
+cp -r ${FINDER_APP_DIR}/conf/ ${OUTDIR}/rootfs/home
 cp ${FINDER_APP_DIR}/finder.sh ${OUTDIR}/rootfs/home
 cp ${FINDER_APP_DIR}/finder-test.sh ${OUTDIR}/rootfs/home
-cp ${FINDER_APP_DIR}/writer.c ${OUTDIR}/rootfs/home
 cp ${FINDER_APP_DIR}/writer ${OUTDIR}/rootfs/home
-cp -r ${FINDER_APP_DIR}/conf/ ${OUTDIR}/rootfs/home
-cp ${FINDER_APP_DIR}/autorun-qemu.sh ${OUTDIR}/rootfs/home
+cp ${FINDER_APP_DIR}/writer.c ${OUTDIR}/rootfs/home
 
 # TODO: Chown the root directory
-#Pg 199 Mastering Embedded Linux Programming
+# Pg 199 Mastering Embedded Linux Programming
 cd ${OUTDIR}/rootfs
 sudo chown -R root:root *
 
@@ -130,4 +130,6 @@ sudo chown -R root:root *
 # Pg 219 Standalone initramfs Mastering Embedded Linux Programming
 find . | cpio -H newc -ov --owner root:root > ${OUTDIR}/initramfs.cpio
 cd ..
+#echo "$(pwd)"
 gzip -f initramfs.cpio
+
