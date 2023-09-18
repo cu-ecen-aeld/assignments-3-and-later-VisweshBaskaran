@@ -6,8 +6,9 @@ Date:09-17-23
 References:
 	[1] Linux System Programming by Robert Love, 2nd Edition
 	[2] ECEN5713 AESD Lecture Slides
-	[3] Stack overflow post "wait(status), WEXITSTATUS(status) always returns 0"" 			https://stackoverflow.com/questions/35471521/waitstatus-wexitstatusstatus-always-returns-0
-	[4] https://stackoverflow.com/a/13784315/1446624
+	[3] Stack overflow post "wait(status), WEXITSTATUS(status) always returns 0 https://stackoverflow.com/questions/35471521/waitstatus-wexitstatusstatus-always-returns-0
+	[4] Redirection inside call to execvp() not working https://stackoverflow.com/a/13784315/1446624
+
 */
 
 #include "systemcalls.h"
@@ -205,3 +206,5 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     	closelog();
     	return true;
 }
+
+

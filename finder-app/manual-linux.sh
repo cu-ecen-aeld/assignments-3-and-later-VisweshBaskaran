@@ -3,7 +3,9 @@
 # Author: Siddhant Jajoo
 # Modified by Visweshwaran Baskaran for Assignment 3
 # Date 09-17-23
-
+# References:
+# 	[1] ECEN5713 AESD Lecture slides
+#	[2] Mastering Embedded Linux Programming - Second Edition
 set -e
 set -u
 
@@ -62,7 +64,7 @@ then
 fi
 
 # TODO: Create necessary base directories
-# since $OUTDIR/rootfs was deleted in the case it existed through lines 56-60, we need to create the directory again 
+# since $OUTDIR/rootfs was deleted in the case it existed through lines 60-64, we need to create the directory again 
 mkdir ${OUTDIR}/rootfs
 cd ${OUTDIR}/rootfs
 mkdir -p bin dev etc home lib lib64 proc sbin sys tmp usr var
@@ -91,21 +93,26 @@ ${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # TODO: Add library dependencies to rootfs
-SYSROOT=$(${CROSS_COMPILE}gcc -print-sysroot)
-#Program interpreter libraries
+export SYSROOT=$(${CROSS_COMPILE}gcc -print-sysroot)
+# Reference:
+# Pg 210 Libraries for the root filesystem - Mastering embedded linux programming
+# Coursera overview and demo video log
+# Adding dependencies for program interpreter libraries by copying file and symbolic link (2.31 : glibc version)
 cp -a $SYSROOT/lib/ld-linux-aarch64.so.1 lib
-#Shared libraries (Reference: demo video logs)
 cp -a $SYSROOT/lib64/ld-2.31.so lib64
+
+# Adding dependencies for shared libraries by copying file and symbolic link (2.31 : glibc version)
 cp -a $SYSROOT/lib64/libm.so.6 lib64
-cp -a $SYSROOT/lib64/libresolv.so.2 lib64
-cp -a $SYSROOT/lib64/libc.so.6 lib64
 cp -a $SYSROOT/lib64/libm-2.31.so lib64
+cp -a $SYSROOT/lib64/libresolv.so.2 lib64
 cp -a $SYSROOT/lib64/libresolv-2.31.so lib64
+cp -a $SYSROOT/lib64/libc.so.6 lib64
 cp -a $SYSROOT/lib64/libc-2.31.so lib64
 
 # TODO: Make device nodes
+# Reference: Pg 213 Device nodes - Mastering Embedded Linux Programming
 sudo mknod -m 666 dev/null c 1 3
-sudo mknod -m 666 dev/console c 5 1
+sudo mknod -m 600 dev/console c 5 1
 
 # TODO: Clean and build the writer utility
 cd ${FINDER_APP_DIR}
@@ -120,15 +127,15 @@ cp -r ${FINDER_APP_DIR}/conf/ ${OUTDIR}/rootfs/home
 cp ${FINDER_APP_DIR}/finder.sh ${OUTDIR}/rootfs/home
 cp ${FINDER_APP_DIR}/finder-test.sh ${OUTDIR}/rootfs/home
 cp ${FINDER_APP_DIR}/writer ${OUTDIR}/rootfs/home
-cp ${FINDER_APP_DIR}/writer.c ${OUTDIR}/rootfs/home
+
 
 # TODO: Chown the root directory
-# Pg 199 Mastering Embedded Linux Programming
+# Reference: File ownership permissions in the staging directory Pg 199 Mastering Embedded Linux Programming
 cd ${OUTDIR}/rootfs
 sudo chown -R root:root *
 
 # TODO: Create initramfs.cpio.gz
-# Pg 219 Standalone initramfs Mastering Embedded Linux Programming
+# Reference: Pg 219 Standalone initramfs - Mastering Embedded Linux Programming
 find . | cpio -H newc -ov --owner root:root > ${OUTDIR}/initramfs.cpio
 cd ..
 gzip -f initramfs.cpio
