@@ -2,7 +2,7 @@
 # Script outline to install and build kernel.
 # Author: Siddhant Jajoo
 # Modified by Visweshwaran Baskaran for Assignment 3
-# Date 09-17-23
+# Date 09-17-2023
 
 set -e
 set -u
