@@ -64,9 +64,10 @@ int main(int argc, char* argv[])
 	else
 		syslog(LOG_DEBUG, "Writing %s to %s",writestr,writefile);
 	
-	closelog();
+	
 	if(close(fd) == SYSCALL_ERROR)
 		syslog(LOG_ERR, "Error in closing file. Error number: %d", errno);
+	closelog();
 	return 0;
 	
 }
