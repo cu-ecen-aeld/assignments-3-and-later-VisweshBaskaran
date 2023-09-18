@@ -1,7 +1,8 @@
 #!/bin/bash
 # Script outline to install and build kernel.
 # Author: Siddhant Jajoo
-# Modified by Visweshwaran Baskaran
+# Modified by Visweshwaran Baskaran for Assignment 3
+# Date 09-17-23
 
 set -e
 set -u
@@ -104,7 +105,7 @@ cp -a $SYSROOT/lib64/libc-2.31.so lib64
 
 # TODO: Make device nodes
 sudo mknod -m 666 dev/null c 1 3
-sudo mknod -m 600 dev/console c 5 1
+sudo mknod -m 666 dev/console c 5 1
 
 # TODO: Clean and build the writer utility
 cd ${FINDER_APP_DIR}
@@ -130,6 +131,5 @@ sudo chown -R root:root *
 # Pg 219 Standalone initramfs Mastering Embedded Linux Programming
 find . | cpio -H newc -ov --owner root:root > ${OUTDIR}/initramfs.cpio
 cd ..
-#echo "$(pwd)"
 gzip -f initramfs.cpio
 
