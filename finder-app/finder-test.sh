@@ -11,7 +11,7 @@ WRITEDIR=/tmp/aeld-data
 username=$(cat conf/username.txt)
 
 # A2 Update: modified to -lt 2 as WRITESTR always takes default value with -lt 3
-if [ $# -lt 2 ]
+if [ $# -lt 3 ]
 then
 	echo "Using default value ${WRITESTR} for string to write"
 	if [ $# -lt 1 ]
@@ -35,8 +35,8 @@ rm -rf "${WRITEDIR}"
 
 
 # create $WRITEDIR if assignment2
-assignment=`cat ../conf/assignment.txt`
-if [ $assignment = 'assignment2' ]
+assignment=`cat ./conf/assignment.txt`
+if [ $assignment != 'assignment1' ]
 then
 	mkdir -p "$WRITEDIR"
 	#The WRITEDIR is in quotes because if the directory path consists of spaces, then variable substitution will consider it as multiple argument.
@@ -50,9 +50,9 @@ then
 	fi
 fi
 
-echo "Removing the old writer utility and compiling as a native application"
-make clean
-make
+#echo "Removing the old writer utility and compiling as a native application"
+#make clean
+#make
 
 for i in $( seq 1 $NUMFILES)
 do

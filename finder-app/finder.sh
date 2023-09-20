@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Author: Visweshwaran Baskaran
 # Script name: finder.sh
