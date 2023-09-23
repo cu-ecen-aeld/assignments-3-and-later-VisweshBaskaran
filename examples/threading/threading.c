@@ -68,6 +68,7 @@ bool start_thread_obtaining_mutex(pthread_t *thread, pthread_mutex_t *mutex,int 
 	struct thread_data *thread_func_args = (struct thread_data*)malloc(sizeof(struct thread_data));
 	if(thread_func_args == NULL)
 	{	
+	 // Memory allocation error
 	 return false;
 	}
 	
