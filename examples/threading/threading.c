@@ -9,6 +9,7 @@
 //#define DEBUG_LOG(msg,...) 
 #define DEBUG_LOG(msg,...) printf("threading: " msg "\n" , ##__VA_ARGS__)
 #define ERROR_LOG(msg,...) printf("threading ERROR: " msg "\n" , ##__VA_ARGS__)
+#define MS_MULTIPLIER 10e3
 
 void* threadfunc(void* thread_param)
 {
@@ -17,32 +18,32 @@ void* threadfunc(void* thread_param)
     // hint: use a cast like the one below to obtain thread arguments from your parameter
     //struct thread_data* thread_func_args = (struct thread_data *) thread_param;
     struct thread_data* thread_func_args = (struct thread_data *) thread_param;
-    if(usleep(thread_func_args->wait_to_obtain_ms*10e3) == -1 )
+    thread_func_args->thread_complete_success = false;
+    //Sleeping before obtaining lock
+    if(usleep(thread_func_args->wait_to_obtain_ms*MS_MULTIPLIER) == -1 )     //usleep returns -1 on error
     {
-    	thread_func_args->thread_complete_success = false;
     	ERROR_LOG("usleep error. Error no: %d",errno);
     	return thread_param;
     }
-    
-    if( pthread_mutex_lock(thread_func_args->mutex) != 0)
+    //Obtaining lock
+    if( pthread_mutex_lock(thread_func_args->mutex) != 0)     //pthread_mutex_lock returns 0 on success
     {
-    	thread_func_args->thread_complete_success = false;
     	ERROR_LOG("mutex lock error. Error no: %d",errno);
     	return thread_param;
     }
-  
-    if (usleep(thread_func_args->wait_to_release_ms*10e3) == -1)
+    //Holding lock
+    if (usleep(thread_func_args->wait_to_release_ms*MS_MULTIPLIER) == -1)     //usleep returns -1 on error
     {
-    	thread_func_args->thread_complete_success = false;
     	ERROR_LOG("usleep error. Error no: %d",errno);
     	return thread_param;
     }
-    if( pthread_mutex_unlock(thread_func_args->mutex) != 0)
+    //Releasing lock
+    if( pthread_mutex_unlock(thread_func_args->mutex) != 0)     //pthread_mutex_unlock returns 0 on success
     {
-    	thread_func_args->thread_complete_success = false;
     	ERROR_LOG("mutex unlock error. Error no: %d",errno);
     	return thread_param;
     }
+    //On success
     thread_func_args->thread_complete_success = true;
     return thread_param;
 }
@@ -71,7 +72,6 @@ bool start_thread_obtaining_mutex(pthread_t *thread, pthread_mutex_t *mutex,int 
 	 // Memory allocation error
 	 return false;
 	}
-	
 	thread_func_args->mutex = mutex;
 	thread_func_args->wait_to_obtain_ms = wait_to_obtain_ms;
 	thread_func_args->wait_to_release_ms = wait_to_release_ms;
@@ -96,14 +96,6 @@ bool start_thread_obtaining_mutex(pthread_t *thread, pthread_mutex_t *mutex,int 
 
 	}
 	
-    /**
-     * TODO: allocate memory for thread_data, setup mutex and wait arguments, pass thread_data to created thread
-     * using threadfunc() as entry point.
-     *
-     * return true if successful.
-     *
-     * See implementation details in threading.h file comment block
-     */
     return false;
 }
 
