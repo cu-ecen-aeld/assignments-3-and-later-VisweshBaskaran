@@ -8,9 +8,8 @@ set -u
 NUMFILES=10
 WRITESTR=AELD_IS_FUN
 WRITEDIR=/tmp/aeld-data
-username=$(cat conf/username.txt)
+username=$(cat ../../etc/finder-app/conf/username.txt) #update for A4
 
-# A2 Update: modified to -lt 2 as WRITESTR always takes default value with -lt 3
 if [ $# -lt 3 ]
 then
 	echo "Using default value ${WRITESTR} for string to write"
@@ -35,7 +34,7 @@ rm -rf "${WRITEDIR}"
 
 
 # create $WRITEDIR if assignment2
-assignment=`cat ./conf/assignment.txt`
+assignment=`cat ../../etc/finder-app/conf/assignment.txt`
 if [ $assignment != 'assignment1' ]
 then
 	mkdir -p "$WRITEDIR"
@@ -60,6 +59,7 @@ do
 done
 
 OUTPUTSTRING=$(./finder.sh "$WRITEDIR" "$WRITESTR")
+echo "$OUTPUTSTRING" > /tmp/assignment4-result.txt
 
 # remove temporary directories
 rm -rf /tmp/aeld-data
