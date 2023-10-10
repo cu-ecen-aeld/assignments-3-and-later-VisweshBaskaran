@@ -301,7 +301,7 @@ int main(int argc, char *argv[])
       log_closed_connection(their_addr);
 
     }
-  //close syslog
+  //close syslog()
   closelog();
   exit(EXIT_SUCCESS);
   return 0;
