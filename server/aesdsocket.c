@@ -42,20 +42,19 @@ References:
 int sockfd; // declaring socket file descriptor as global for signal handlers
 struct slist_data_s * datap = NULL; // for iterating
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex;
 bool signal_received = false;
 
 struct thread_data {
   pthread_t thread;
   int client_sockfd;
-  pthread_mutex_t * mutex;
+  //pthread_mutex_t * mutex;
   struct sockaddr_storage client_addr;
   bool thread_complete_success;
 };
 
 struct timer_data {
   pthread_t thread;
-  pthread_mutex_t * mutex;
+  //pthread_mutex_t * mutex;
 };
 
 struct slist_data_s {
@@ -110,19 +109,21 @@ void log_closed_connection(struct sockaddr_storage their_addr) {
 }
 
 void * timestamp(void * thread_param) {
+  if (thread_param == NULL) {
+    // Handle invalid input gracefully
+    fprintf(stderr, "Invalid thread_param in timestamp function\n");
+    return NULL;
+  }
+//struct thread_data * thread_func_args = (struct thread_data * ) thread_param;
   int file_fd = open(PATH, O_RDWR | O_APPEND | O_CREAT, 0664);
   if (file_fd == -1) {
     syslog(LOG_ERR, "Open failed: %s", strerror(errno));
     perror("open");
     exit(EXIT_FAILURE);
   }
-  if (thread_param == NULL) {
-    // Handle invalid input gracefully
-    fprintf(stderr, "Invalid thread_param in timestamp function\n");
-    return NULL;
-  }
-
-  struct thread_data * thread_func_args = (struct thread_data * ) thread_param;
+   if (pthread_mutex_lock(&mutex) != 0) {
+      perror("mutex_lock");
+    }
   char fmt[64];
   struct timeval tv;
   struct tm * tm;
@@ -130,17 +131,15 @@ void * timestamp(void * thread_param) {
   while (!signal_received) {
     gettimeofday( & tv, NULL);
     if ((tm = localtime( & tv.tv_sec)) != NULL) {
-      strftime(fmt, sizeof(fmt), "timestamp:%Y %b %d %H:%M:%S", tm);
-      printf("aftr strftime\n");
+      strftime(fmt, sizeof(fmt), "timestamp:%Y %b %d %H:%M:%S\n", tm);
+      //printf("aftr strftime\n");
     }
 
-    if (pthread_mutex_lock(thread_func_args -> mutex) != 0) {
-      perror("mutex_lock");
-    }
-    printf(" locked\n");
+ 
+   // printf(" locked\n");
     ssize_t bytes_written = write(file_fd, fmt, strlen(fmt));
-    printf("Inside lock\n");
-    if (pthread_mutex_unlock(thread_func_args -> mutex) != 0) {
+   // printf("Inside lock\n");
+    if (pthread_mutex_unlock(&mutex) != 0) {
       perror("mutex_unlock");
     }
 
@@ -186,7 +185,7 @@ void * threadfunc(void * thread_param) {
       free(recv_buffer); // Don't forget to free the buffer on error
       exit(EXIT_FAILURE);
     }
-    if (pthread_mutex_lock(thread_func_args -> mutex) == -1) {
+    if (pthread_mutex_lock(&mutex) == -1) {
       ;
     }
     if (write(file_fd, recv_buffer, bytes_recvd) == SYSCALL_ERROR) {
@@ -196,7 +195,7 @@ void * threadfunc(void * thread_param) {
       free(recv_buffer);
       exit(EXIT_FAILURE);
     }
-    pthread_mutex_unlock(thread_func_args -> mutex);
+    pthread_mutex_unlock(&mutex);
     // Check if the last character received is a newline
     if (strchr(recv_buffer, '\n') != NULL) {
       free(recv_buffer);
@@ -401,9 +400,9 @@ int main(int argc, char * argv[]) {
        perror("open");
        exit(EXIT_FAILURE);
      }*/
-  // struct timer_data timer_data;
+  struct timer_data timer_data;
   //timer_data.mutex = &mutex;
-  // pthread_create(&(timer_data.thread), NULL, timestamp,&timer_data);
+  pthread_create(&(timer_data.thread), NULL, timestamp,&timer_data);
   while (signal_received == false) {
 
     int client_sockfd = accept(sockfd, (struct sockaddr * ) & their_addr, & sin_size);
@@ -423,7 +422,7 @@ int main(int argc, char * argv[]) {
     datap -> connection_data.client_sockfd = client_sockfd;
     datap -> connection_data.client_addr = their_addr;
     datap -> connection_data.thread_complete_success = false;
-    datap -> connection_data.mutex = & mutex;
+    //datap -> connection_data.mutex = & mutex;
     pthread_create( & (datap -> connection_data.thread), NULL, threadfunc, & datap -> connection_data);
     SLIST_FOREACH(datap, & head, entries) {
       if (datap -> connection_data.thread_complete_success == true) {
