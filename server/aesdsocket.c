@@ -47,14 +47,12 @@ bool signal_received = false;
 struct thread_data {
   pthread_t thread;
   int client_sockfd;
-  //pthread_mutex_t * mutex;
   struct sockaddr_storage client_addr;
   bool thread_complete_success;
 };
 
 struct timer_data {
   pthread_t thread;
-  //pthread_mutex_t * mutex;
 };
 
 struct slist_data_s {
@@ -111,19 +109,17 @@ void log_closed_connection(struct sockaddr_storage their_addr) {
 void * timestamp(void * thread_param) {
   if (thread_param == NULL) {
     // Handle invalid input gracefully
-    fprintf(stderr, "Invalid thread_param in timestamp function\n");
+    perror("NULL params\n");
     return NULL;
   }
-//struct thread_data * thread_func_args = (struct thread_data * ) thread_param;
+  //struct thread_data * thread_func_args = (struct thread_data * ) thread_param;
   int file_fd = open(PATH, O_RDWR | O_APPEND | O_CREAT, 0664);
   if (file_fd == -1) {
     syslog(LOG_ERR, "Open failed: %s", strerror(errno));
     perror("open");
-    exit(EXIT_FAILURE);
+    close(file_fd);
   }
-   if (pthread_mutex_lock(&mutex) != 0) {
-      perror("mutex_lock");
-    }
+
   char fmt[64];
   struct timeval tv;
   struct tm * tm;
@@ -132,19 +128,18 @@ void * timestamp(void * thread_param) {
     gettimeofday( & tv, NULL);
     if ((tm = localtime( & tv.tv_sec)) != NULL) {
       strftime(fmt, sizeof(fmt), "timestamp:%Y %b %d %H:%M:%S\n", tm);
-      //printf("aftr strftime\n");
     }
-
- 
-   // printf(" locked\n");
+    if (pthread_mutex_lock( & mutex) != 0) {
+      perror("mutex_lock");
+      break;
+    }
     ssize_t bytes_written = write(file_fd, fmt, strlen(fmt));
-   // printf("Inside lock\n");
-    if (pthread_mutex_unlock(&mutex) != 0) {
+    if (pthread_mutex_unlock( & mutex) != 0) {
       perror("mutex_unlock");
+      break;
     }
 
     if (bytes_written == -1) {
-      // Handle the error if write fails
       perror("write");
       syslog(LOG_ERR, "write failed: %s", strerror(errno));
     }
@@ -152,7 +147,6 @@ void * timestamp(void * thread_param) {
     sleep(10);
   }
   close(file_fd);
-
   return NULL;
 }
 
@@ -167,6 +161,7 @@ void * threadfunc(void * thread_param) {
   ssize_t bytes_read;
   ssize_t bytes_recvd;
   if (NULL == thread_param) {
+    perror("NULL params\n");
     return NULL;
   }
   struct thread_data * thread_func_args = (struct thread_data * ) thread_param;
@@ -176,26 +171,33 @@ void * threadfunc(void * thread_param) {
     if (recv_buffer == NULL) {
       syslog(LOG_ERR, "Malloc failed: %s", strerror(errno));
       perror("malloc failed");
-      exit(EXIT_FAILURE);
+      free(recv_buffer);
+      goto exit_branch;
     }
     bytes_recvd = recv(thread_func_args -> client_sockfd, recv_buffer, MAX_PACKET_SIZE, 0);
     if (bytes_recvd == SYSCALL_ERROR) {
       perror("recv");
       syslog(LOG_ERR, "recv failed: %s", strerror(errno));
       free(recv_buffer); // Don't forget to free the buffer on error
-      exit(EXIT_FAILURE);
+
     }
-    if (pthread_mutex_lock(&mutex) == -1) {
-      ;
+    if (pthread_mutex_lock( & mutex) != 0) {
+      perror("mutex lock\n");
+      free(recv_buffer);
+      goto exit_branch;
     }
     if (write(file_fd, recv_buffer, bytes_recvd) == SYSCALL_ERROR) {
       perror("write");
       //printf("bad file descriptor: %d", thread_func_args->file_fd);
       syslog(LOG_ERR, "write failed: %s", strerror(errno));
       free(recv_buffer);
-      exit(EXIT_FAILURE);
+      goto exit_branch;
     }
-    pthread_mutex_unlock(&mutex);
+    if (pthread_mutex_unlock( & mutex) != 0) {
+      perror("mutex unlock\n");
+      free(recv_buffer);
+      goto exit_branch;
+    }
     // Check if the last character received is a newline
     if (strchr(recv_buffer, '\n') != NULL) {
       free(recv_buffer);
@@ -209,23 +211,27 @@ void * threadfunc(void * thread_param) {
   if (send_buffer == NULL) {
     syslog(LOG_ERR, "Malloc failed: %s", strerror(errno));
     perror("malloc failed");
-    exit(EXIT_FAILURE);
+    free(send_buffer);
+    goto exit_branch;
   }
   // Read data from the file into the send_buffer
   bytes_read = read(file_fd, send_buffer, MAX_PACKET_SIZE);
   if (bytes_read == SYSCALL_ERROR) {
     perror("read");
-    exit(EXIT_FAILURE);
+    free(send_buffer);
+    goto exit_branch;
   }
   send(thread_func_args -> client_sockfd, send_buffer, bytes_read, 0);
-  // close file descriptor of file
-  close(file_fd);
-  // close client socket file descriptor
-  close(thread_func_args -> client_sockfd);
-  free(send_buffer);
   // Log the closed connection
   log_closed_connection(thread_func_args -> client_addr);
+
+  exit_branch:
+    // close client socket file descriptor
+    close(thread_func_args -> client_sockfd);
   thread_func_args -> thread_complete_success = true;
+  close(file_fd);
+  if (send_buffer)
+    free(send_buffer);
   return NULL; /*for avoiding "error: control reaches end of non-void function"*/
 }
 
@@ -302,20 +308,12 @@ void run_as_daemon() {
 void signal_handler(int sig) {
   if (sig == SIGINT || sig == SIGTERM) {
     signal_received = true;
-
     exit_gracefully();
   }
 }
 
 int main(int argc, char * argv[]) {
   pthread_mutex_init( & mutex, NULL);
-  /*if(signal_received == true)
-  {
-  	exit_gracefully();
-  }
-*/
-  SLIST_INIT( & head);
-
   struct addrinfo hints, * servinfo, * p;
   struct sockaddr_storage their_addr;
   socklen_t sin_size = sizeof(their_addr);
@@ -326,14 +324,25 @@ int main(int argc, char * argv[]) {
   openlog("aesdsocket", LOG_PID, LOG_USER); // Open syslog
   // Cleanup of PATH
   remove(PATH); // to erase contents and the file in case of SIGKILL (kill -s 9 <pid>)
-  if (signal(SIGINT, signal_handler) == SIG_ERR) {
-    fprintf(stderr, "Cannot handle SIGINT!\n");
+
+  struct sigaction sa;
+  sa.sa_handler = & signal_handler; // reap all dead processes
+  sigfillset( & sa.sa_mask);
+  sa.sa_flags = SA_RESTART;
+
+  if (sigaction(SIGINT, & sa, NULL) == -1) {
+    closelog();
+    pthread_mutex_destroy( & mutex);
+    perror("sigaction");
     exit(EXIT_FAILURE);
   }
-  if (signal(SIGTERM, signal_handler) == SIG_ERR) {
-    fprintf(stderr, "Cannot handle SIGTERM!\n");
+  if (sigaction(SIGTERM, & sa, NULL) == -1) {
+    closelog();
+    pthread_mutex_destroy( & mutex);
+    perror("sigaction");
     exit(EXIT_FAILURE);
   }
+
   // Checking if the -d argument is provided
   if ((argc == 2) && (strcmp(argv[1], "-d") == 0))
     daemon_mode = true;
@@ -351,6 +360,8 @@ int main(int argc, char * argv[]) {
 
   // Use getaddrinfo to retrieve a list of address structures that match the specified criteria.
   if ((rv = getaddrinfo(NULL, PORT, & hints, & servinfo)) != 0) {
+    closelog();
+    pthread_mutex_destroy( & mutex);
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
     exit(EXIT_FAILURE);
   }
@@ -365,6 +376,8 @@ int main(int argc, char * argv[]) {
 
     // Allow reusing the address/port even if it's in TIME_WAIT state.
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, & yes, sizeof(int)) == -1) {
+      closelog();
+      pthread_mutex_destroy( & mutex);
       perror("setsockopt");
       exit(EXIT_FAILURE);
     }
@@ -384,25 +397,22 @@ int main(int argc, char * argv[]) {
   freeaddrinfo(servinfo);
 
   if (p == NULL) {
+    closelog();
+    pthread_mutex_destroy( & mutex);
     fprintf(stderr, "server: failed to bind\n");
     exit(EXIT_FAILURE);
   }
 
   if (listen(sockfd, BACKLOG) == -1) {
+    closelog();
+    pthread_mutex_destroy( & mutex);
     perror("listen");
     exit(EXIT_FAILURE);
   }
 
-  /*int file_fd = open(PATH, O_RDWR | O_APPEND | O_CREAT, 0664);
-   if (file_fd == -1)
-     {
-       syslog(LOG_ERR, "Open failed: %s", strerror(errno));
-       perror("open");
-       exit(EXIT_FAILURE);
-     }*/
+  SLIST_INIT( & head);
   struct timer_data timer_data;
-  //timer_data.mutex = &mutex;
-  pthread_create(&(timer_data.thread), NULL, timestamp,&timer_data);
+  pthread_create( & (timer_data.thread), NULL, timestamp, & timer_data);
   while (signal_received == false) {
 
     int client_sockfd = accept(sockfd, (struct sockaddr * ) & their_addr, & sin_size);
@@ -411,35 +421,39 @@ int main(int argc, char * argv[]) {
       continue;
     }
     datap = (struct slist_data_s * ) malloc(sizeof(struct slist_data_s));
-    /*
-      pthread_t thread;
-      int client_sockfd;
-      int file_fd;
-      pthread_mutex_t *mutex;
-      struct sockaddr_in client_addr;
-      bool thread_complete_success;
-     */
+
     datap -> connection_data.client_sockfd = client_sockfd;
     datap -> connection_data.client_addr = their_addr;
     datap -> connection_data.thread_complete_success = false;
-    //datap -> connection_data.mutex = & mutex;
-    pthread_create( & (datap -> connection_data.thread), NULL, threadfunc, & datap -> connection_data);
-    SLIST_FOREACH(datap, & head, entries) {
-      if (datap -> connection_data.thread_complete_success == true) {
+    if (pthread_create( & (datap -> connection_data.thread), NULL, threadfunc, & datap -> connection_data) != 0) {
+      perror("pthread_create");
+      break;
+    }
+    struct slist_data_s * temp;
+    SLIST_FOREACH_SAFE(datap, & head, entries, temp) {
+      if (datap -> connection_data.thread_complete_success) {
         pthread_join(datap -> connection_data.thread, NULL);
         SLIST_REMOVE( & head, datap, slist_data_s, entries);
         free(datap);
-
-        //break;
       }
+
     }
 
   }
 
+  while (SLIST_FIRST( & head) != NULL) {
+    SLIST_FOREACH(datap, & head, entries) {
+      close(datap -> connection_data.client_sockfd);
+      pthread_join(datap -> connection_data.thread, NULL);
+      SLIST_REMOVE( & head, datap, slist_data_s, entries);
+      free(datap);
+    }
+  }
   pthread_mutex_destroy( & mutex);
   remove(PATH);
   close(sockfd);
   free(datap);
   closelog();
+  exit(EXIT_SUCCESS);
   return 0;
 }
