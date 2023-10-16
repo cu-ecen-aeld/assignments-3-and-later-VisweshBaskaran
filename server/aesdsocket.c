@@ -443,6 +443,7 @@ int main(int argc, char * argv[]) {
     datap -> connection_data.client_sockfd = client_sockfd;
     datap -> connection_data.client_addr = their_addr;
     datap -> connection_data.thread_complete_success = false;
+     SLIST_INSERT_HEAD(&head, datap, entries);
     if (pthread_create( & (datap -> connection_data.thread), NULL, threadfunc, & datap -> connection_data) != 0) {
       perror("pthread_create");
       break;
@@ -457,7 +458,7 @@ int main(int argc, char * argv[]) {
     }
 
   }
-  printf("exited while\n");
+  //printf("exited while\n");
 
   while (SLIST_FIRST( &head) != NULL) {
     SLIST_FOREACH(datap, & head, entries) {
@@ -466,6 +467,7 @@ int main(int argc, char * argv[]) {
       SLIST_REMOVE( & head, datap, slist_data_s, entries);
       free(datap);
     }
+    
   }
   pthread_mutex_destroy( &mutex);
   remove(PATH);
@@ -473,6 +475,5 @@ int main(int argc, char * argv[]) {
   close(sockfd);
   free(datap);
   closelog();
-  //exit(EXIT_SUCCESS);
   return 0;
 }
