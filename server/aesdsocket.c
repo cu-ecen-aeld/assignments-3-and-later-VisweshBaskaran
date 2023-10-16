@@ -176,77 +176,76 @@ void * threadfunc(void * thread_param) {
     perror("NULL params\n");
     return NULL;
   }
-  struct thread_data * thread_func_args = (struct thread_data * ) thread_param;
+   struct thread_data * thread_func_args = (struct thread_data * ) thread_param;
   log_accepted_connection(thread_func_args -> client_addr);
-  char * recv_buffer = (char * ) malloc(MAX_PACKET_SIZE);
+  while (1) {
+    char * recv_buffer = (char * ) malloc(MAX_PACKET_SIZE);
     if (recv_buffer == NULL) {
       syslog(LOG_ERR, "Malloc failed: %s", strerror(errno));
       perror("malloc failed");
       free(recv_buffer);
       goto exit_branch;
     }
-     memset(recv_buffer, 0, MAX_PACKET_SIZE * sizeof(char));
-  while ((bytes_recvd = recv(thread_func_args -> client_sockfd, recv_buffer, MAX_PACKET_SIZE, 0)) > 0) {
-    
-    
+    bytes_recvd = recv(thread_func_args -> client_sockfd, recv_buffer, MAX_PACKET_SIZE, 0);
+    if (bytes_recvd == SYSCALL_ERROR) {
+      perror("recv");
+      syslog(LOG_ERR, "recv failed: %s", strerror(errno));
+      free(recv_buffer); // Don't forget to free the buffer on error
+
+    }
     if (pthread_mutex_lock( & mutex) != 0) {
       perror("mutex lock\n");
-     // free(recv_buffer);
+      free(recv_buffer);
       goto exit_branch;
     }
     if (write(file_fd, recv_buffer, bytes_recvd) == SYSCALL_ERROR) {
       perror("write");
       //printf("bad file descriptor: %d", thread_func_args->file_fd);
       syslog(LOG_ERR, "write failed: %s", strerror(errno));
-      //free(recv_buffer);
+      free(recv_buffer);
       goto exit_branch;
     }
     if (pthread_mutex_unlock( & mutex) != 0) {
       perror("mutex unlock\n");
-      //free(recv_buffer);
+      free(recv_buffer);
       goto exit_branch;
     }
-    recv_buffer[bytes_recvd] = '\n';
     // Check if the last character received is a newline
     if (strchr(recv_buffer, '\n') != NULL) {
-      //free(recv_buffer);
-      lseek(file_fd, 0, SEEK_SET);
-      bytes_read = read(file_fd, recv_buffer, MAX_PACKET_SIZE);
-      if (bytes_read == SYSCALL_ERROR) {
-    	perror("read");
-    	goto exit_branch;
-    }/**
- * @brief Thread function to handle client connections and log data to a file.
- *
- * This function is executed as a separate thread and is responsible for handling client connections,
- * receiving data from clients, logging the data to a file, and sending back responses.
- *
- * @param thread_param A pointer to thread-specific data (struct thread_data) that may be used in the function.
- * @return NULL, as this function doesn't return a value directly. It's used to avoid "control reaches end of non-void function" error.
- */
-    while(bytes_read > 0)
-    {
-      if(send(thread_func_args -> client_sockfd, recv_buffer, bytes_read, 0) == SYSCALL_ERROR)
-      {
-      perror("send");
-      goto exit_branch;
-      }
-     bytes_read = read(file_fd, recv_buffer, MAX_PACKET_SIZE);
-    }
-    
+      free(recv_buffer);
+      break;
     }
   }
 
+  // Move the file cursor to the beginning of the file
+  lseek(file_fd, 0, SEEK_SET);
+  char * send_buffer = (char * ) malloc(MAX_PACKET_SIZE);
+  if (send_buffer == NULL) {
+    syslog(LOG_ERR, "Malloc failed: %s", strerror(errno));
+    perror("malloc failed");
+    free(send_buffer);
+    goto exit_branch;
+  }
+  // Read data from the file into the send_buffer
+  bytes_read = read(file_fd, send_buffer, MAX_PACKET_SIZE);
+  if (bytes_read == SYSCALL_ERROR) {
+    perror("read");
+    free(send_buffer);
+    goto exit_branch;
+  }
+  send(thread_func_args -> client_sockfd, send_buffer, bytes_read, 0);
   // Log the closed connection
   log_closed_connection(thread_func_args -> client_addr);
+
   exit_branch:
-  free(recv_buffer);
     // close client socket file descriptor
     close(thread_func_args -> client_sockfd);
   thread_func_args -> thread_complete_success = true;
   close(file_fd);
-  //exit(EXIT_FAILURE);
+  if (send_buffer)
+    free(send_buffer);
   return NULL; /*for avoiding "error: control reaches end of non-void function"*/
+
 }
 /**
  * @brief Gracefully exits the program, cleaning up resources and closing connections.
@@ -431,7 +430,8 @@ int main(int argc, char * argv[]) {
   SLIST_INIT( & head);
   struct timer_data timer_data;
   pthread_create( & (timer_data.thread), NULL, timestamp, & timer_data);
-  while (signal_received == false) {
+  while (signal_received == false) 
+  {
 
     int client_sockfd = accept(sockfd, (struct sockaddr * ) & their_addr, & sin_size);
     if (client_sockfd == -1) {
@@ -458,7 +458,6 @@ int main(int argc, char * argv[]) {
     }
 
   }
-  //printf("exited while\n");
 
   while (SLIST_FIRST( &head) != NULL) {
     SLIST_FOREACH(datap, & head, entries) {
