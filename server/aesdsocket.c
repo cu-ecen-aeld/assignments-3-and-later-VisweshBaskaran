@@ -106,6 +106,12 @@ void log_closed_connection(struct sockaddr_storage their_addr) {
   printf("Accepted connection from %s\n", s);
 }
 
+/**
+ * @brief Generates and appends timestamps to a file.
+ *
+ * @param thread_param A pointer to thread-specific data (struct thread_data) that may be used in the function.
+ * @return NULL
+ */
 void * timestamp(void * thread_param) {
   if (thread_param == NULL) {
     // Handle invalid input gracefully
@@ -150,6 +156,12 @@ void * timestamp(void * thread_param) {
   return NULL;
 }
 
+/**
+ * @brief Thread function to handle client connections and log data to a file.
+ *
+ * @param thread_param A pointer to thread-specific data (struct thread_data) that may be used in the function.
+ * @return EXIT_FAILURE on failure else NULL
+ */
 void * threadfunc(void * thread_param) {
 
   int file_fd = open(PATH, O_RDWR | O_APPEND | O_CREAT, 0664);
@@ -166,75 +178,81 @@ void * threadfunc(void * thread_param) {
   }
   struct thread_data * thread_func_args = (struct thread_data * ) thread_param;
   log_accepted_connection(thread_func_args -> client_addr);
-  while (1) {
-    char * recv_buffer = (char * ) malloc(MAX_PACKET_SIZE);
+  char * recv_buffer = (char * ) malloc(MAX_PACKET_SIZE);
     if (recv_buffer == NULL) {
       syslog(LOG_ERR, "Malloc failed: %s", strerror(errno));
       perror("malloc failed");
       free(recv_buffer);
       goto exit_branch;
     }
-    bytes_recvd = recv(thread_func_args -> client_sockfd, recv_buffer, MAX_PACKET_SIZE, 0);
-    if (bytes_recvd == SYSCALL_ERROR) {
-      perror("recv");
-      syslog(LOG_ERR, "recv failed: %s", strerror(errno));
-      free(recv_buffer); // Don't forget to free the buffer on error
-
-    }
+     memset(recv_buffer, 0, MAX_PACKET_SIZE * sizeof(char));
+  while ((bytes_recvd = recv(thread_func_args -> client_sockfd, recv_buffer, MAX_PACKET_SIZE, 0)) > 0) {
+    
+    
     if (pthread_mutex_lock( & mutex) != 0) {
       perror("mutex lock\n");
-      free(recv_buffer);
+     // free(recv_buffer);
       goto exit_branch;
     }
     if (write(file_fd, recv_buffer, bytes_recvd) == SYSCALL_ERROR) {
       perror("write");
       //printf("bad file descriptor: %d", thread_func_args->file_fd);
       syslog(LOG_ERR, "write failed: %s", strerror(errno));
-      free(recv_buffer);
+      //free(recv_buffer);
       goto exit_branch;
     }
     if (pthread_mutex_unlock( & mutex) != 0) {
       perror("mutex unlock\n");
-      free(recv_buffer);
+      //free(recv_buffer);
       goto exit_branch;
     }
+    recv_buffer[bytes_recvd] = '\n';
     // Check if the last character received is a newline
     if (strchr(recv_buffer, '\n') != NULL) {
-      free(recv_buffer);
-      break;
+      //free(recv_buffer);
+      lseek(file_fd, 0, SEEK_SET);
+      bytes_read = read(file_fd, recv_buffer, MAX_PACKET_SIZE);
+      if (bytes_read == SYSCALL_ERROR) {
+    	perror("read");
+    	goto exit_branch;
+    }/**
+ * @brief Thread function to handle client connections and log data to a file.
+ *
+ * This function is executed as a separate thread and is responsible for handling client connections,
+ * receiving data from clients, logging the data to a file, and sending back responses.
+ *
+ * @param thread_param A pointer to thread-specific data (struct thread_data) that may be used in the function.
+ * @return NULL, as this function doesn't return a value directly. It's used to avoid "control reaches end of non-void function" error.
+ */
+    while(bytes_read > 0)
+    {
+      if(send(thread_func_args -> client_sockfd, recv_buffer, bytes_read, 0) == SYSCALL_ERROR)
+      {
+      perror("send");
+      goto exit_branch;
+      }
+     bytes_read = read(file_fd, recv_buffer, MAX_PACKET_SIZE);
+    }
+    
     }
   }
 
-  // Move the file cursor to the beginning of the file
-  lseek(file_fd, 0, SEEK_SET);
-  char * send_buffer = (char * ) malloc(MAX_PACKET_SIZE);
-  if (send_buffer == NULL) {
-    syslog(LOG_ERR, "Malloc failed: %s", strerror(errno));
-    perror("malloc failed");
-    free(send_buffer);
-    goto exit_branch;
-  }
-  // Read data from the file into the send_buffer
-  bytes_read = read(file_fd, send_buffer, MAX_PACKET_SIZE);
-  if (bytes_read == SYSCALL_ERROR) {
-    perror("read");
-    free(send_buffer);
-    goto exit_branch;
-  }
-  send(thread_func_args -> client_sockfd, send_buffer, bytes_read, 0);
   // Log the closed connection
   log_closed_connection(thread_func_args -> client_addr);
-
   exit_branch:
+  free(recv_buffer);
     // close client socket file descriptor
     close(thread_func_args -> client_sockfd);
   thread_func_args -> thread_complete_success = true;
   close(file_fd);
-  if (send_buffer)
-    free(send_buffer);
+  //exit(EXIT_FAILURE);
   return NULL; /*for avoiding "error: control reaches end of non-void function"*/
 }
-
+/**
+ * @brief Gracefully exits the program, cleaning up resources and closing connections.
+ * @param
+ * @return none
+ */
 void exit_gracefully() {
 
   syslog(LOG_INFO, "Caught signal, exiting");
@@ -327,7 +345,7 @@ int main(int argc, char * argv[]) {
 
   struct sigaction sa;
   sa.sa_handler = & signal_handler; // reap all dead processes
-  sigfillset( & sa.sa_mask);
+  sigemptyset( & sa.sa_mask);
   sa.sa_flags = SA_RESTART;
 
   if (sigaction(SIGINT, & sa, NULL) == -1) {
@@ -436,12 +454,12 @@ int main(int argc, char * argv[]) {
         SLIST_REMOVE( & head, datap, slist_data_s, entries);
         free(datap);
       }
-
     }
 
   }
+  printf("exited while\n");
 
-  while (SLIST_FIRST( & head) != NULL) {
+  while (SLIST_FIRST( &head) != NULL) {
     SLIST_FOREACH(datap, & head, entries) {
       close(datap -> connection_data.client_sockfd);
       pthread_join(datap -> connection_data.thread, NULL);
@@ -449,11 +467,12 @@ int main(int argc, char * argv[]) {
       free(datap);
     }
   }
-  pthread_mutex_destroy( & mutex);
+  pthread_mutex_destroy( &mutex);
   remove(PATH);
+  shutdown(sockfd, SHUT_RDWR);
   close(sockfd);
   free(datap);
   closelog();
-  exit(EXIT_SUCCESS);
+  //exit(EXIT_SUCCESS);
   return 0;
 }

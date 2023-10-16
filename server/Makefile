@@ -1,10 +1,12 @@
 
 CC=$(CROSS_COMPILE)gcc
-CFLAGS=-Wall -Werror
+CFLAGS=-Wall -Werror -g
 #Creating makefile with pthreads https://stackoverflow.com/questions/15367617/creating-makefile-with-pthreads
-LDFLAGS = -pthread -lrt 
-all: aesdsocket
-	$(CC) $(CFLAGS) $(LDFLAGS) -o aesdsocket aesdsocket.c
+LDFLAGS = -pthread -lrt
+TARGET = aesdsocket
+SRC = aesdsocket.c
+all: 
+	$(CC) $(CFLAGS) $(LDFLAGS) -o  $(TARGET) $(SRC) 
 
 clean:
-	rm -f *.o aesdsocket
+	rm -f *.o *.elf *.map *.txt $(TARGET)
