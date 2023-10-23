@@ -255,11 +255,14 @@ void * threadfunc(void * thread_param) {
 void exit_gracefully() {
 
   syslog(LOG_INFO, "Caught signal, exiting");
-  closelog();
+  //closelog();
   // Close the socket and delete the file
+    // Join the timer thread
+    //pthread_join(timer_data.thread, NULL);
   close(sockfd);
   remove(PATH);
   while (SLIST_FIRST( & head) != NULL) {
+  struct slist_data_s *datap;
     SLIST_FOREACH(datap, & head, entries) {
       close(datap -> connection_data.client_sockfd);
       pthread_join(datap -> connection_data.thread, NULL);
@@ -267,6 +270,9 @@ void exit_gracefully() {
       free(datap);
     }
   }
+  
+    pthread_mutex_destroy(&mutex);
+    closelog();
   exit(EXIT_SUCCESS);
 }
 
@@ -428,8 +434,8 @@ int main(int argc, char * argv[]) {
   }
 
   SLIST_INIT( & head);
-  struct timer_data timer_data;
-  pthread_create( & (timer_data.thread), NULL, timestamp, & timer_data);
+  struct timer_data timer_data_t;
+  pthread_create( & (timer_data_t.thread), NULL, timestamp, & timer_data_t);
   while (signal_received == false) 
   {
 
@@ -468,6 +474,7 @@ int main(int argc, char * argv[]) {
     }
     
   }
+  pthread_join((timer_data_t.thread), NULL);
   pthread_mutex_destroy( &mutex);
   remove(PATH);
   shutdown(sockfd, SHUT_RDWR);
