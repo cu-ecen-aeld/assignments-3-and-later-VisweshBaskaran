@@ -27,6 +27,10 @@
  */
 struct aesd_buffer_entry * aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer * buffer,
   size_t char_offset, size_t * entry_offset_byte_rtn) {
+  //Checking if the pointer buffer and the pointer entry_offset_byte_rtn are null pointers  
+     if (!buffer || !entry_offset_byte_rtn) {
+        return NULL;
+    }
   size_t cumulative_offset = 0;
   int current_entry_index = buffer -> out_offs;
   int i = 0;
