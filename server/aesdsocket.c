@@ -196,7 +196,7 @@ void * threadfunc(void * thread_param) {
     if (recv_buffer == NULL) {
       syslog(LOG_ERR, "Malloc failed: %s", strerror(errno));
       perror("malloc failed");
-      free(recv_buffer);
+      //free(recv_buffer);
       goto exit_branch;
     }
     bytes_recvd = recv(thread_func_args -> client_sockfd, recv_buffer, MAX_PACKET_SIZE, 0);
@@ -292,7 +292,7 @@ void exit_gracefully() {
   
     pthread_mutex_destroy(&mutex);
     closelog();
-  exit(EXIT_SUCCESS);
+  //exit(EXIT_SUCCESS);
 }
 
 /**
@@ -454,7 +454,7 @@ int main(int argc, char * argv[]) {
   }
 
   SLIST_INIT( & head);
-    #ifndef USE_AESD_CHAR_DEVICE
+   #ifndef USE_AESD_CHAR_DEVICE
   struct timer_data timer_data_t;
   pthread_create( & (timer_data_t.thread), NULL, timestamp, & timer_data_t);
   #endif
