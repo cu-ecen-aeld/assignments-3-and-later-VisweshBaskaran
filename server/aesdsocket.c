@@ -35,7 +35,15 @@ References:
 #define PORT "9000" // Change the port to 9000
 #define BACKLOG 10 // How many pending connections queue will hold
 #define MAX_PACKET_SIZE 30000 // Maximum packet size, set as a large value instead of 1024 for sockettest.sh test cases
-#define PATH "/var/tmp/aesdsocketdata"
+
+#define USE_AESD_CHAR_DEVICE 1
+
+#ifdef USE_AESD_CHAR_DEVICE
+	#define PATH "/dev/aesdchar"
+#else
+	#define PATH "/var/tmp/aesdsocketdata"
+#endif 
+
 #define SYSCALL_ERROR - 1
 #define TIMESTAMP_FORMAT "%Y %b %d %H:%M:%S" // RFC 2822 compliant strftime format
 
@@ -51,9 +59,11 @@ struct thread_data {
   bool thread_complete_success;
 };
 
+#ifndef USE_AESD_CHAR_DEVICE
 struct timer_data {
   pthread_t thread;
 };
+#endif
 
 struct slist_data_s {
   struct thread_data connection_data;
@@ -112,6 +122,7 @@ void log_closed_connection(struct sockaddr_storage their_addr) {
  * @param thread_param A pointer to thread-specific data (struct thread_data) that may be used in the function.
  * @return NULL
  */
+ #ifndef USE_AESD_CHAR_DEVICE
 void * timestamp(void * thread_param) {
   if (thread_param == NULL) {
     // Handle invalid input gracefully
@@ -135,6 +146,7 @@ void * timestamp(void * thread_param) {
     if ((tm = localtime( & tv.tv_sec)) != NULL) {
       strftime(fmt, sizeof(fmt), "timestamp:%Y %b %d %H:%M:%S\n", tm);
     }
+  
     if (pthread_mutex_lock( & mutex) != 0) {
       perror("mutex_lock");
       break;
@@ -155,6 +167,7 @@ void * timestamp(void * thread_param) {
   close(file_fd);
   return NULL;
 }
+#endif
 
 /**
  * @brief Thread function to handle client connections and log data to a file.
@@ -193,11 +206,13 @@ void * threadfunc(void * thread_param) {
       free(recv_buffer); // Don't forget to free the buffer on error
 
     }
+    #ifndef USE_AESD_CHAR_DEVICE
     if (pthread_mutex_lock( & mutex) != 0) {
       perror("mutex lock\n");
       free(recv_buffer);
       goto exit_branch;
     }
+    #endif
     if (write(file_fd, recv_buffer, bytes_recvd) == SYSCALL_ERROR) {
       perror("write");
       //printf("bad file descriptor: %d", thread_func_args->file_fd);
@@ -205,11 +220,13 @@ void * threadfunc(void * thread_param) {
       free(recv_buffer);
       goto exit_branch;
     }
+      #ifndef USE_AESD_CHAR_DEVICE
     if (pthread_mutex_unlock( & mutex) != 0) {
       perror("mutex unlock\n");
       free(recv_buffer);
       goto exit_branch;
     }
+    #endif
     // Check if the last character received is a newline
     if (strchr(recv_buffer, '\n') != NULL) {
       free(recv_buffer);
@@ -260,7 +277,9 @@ void exit_gracefully() {
     // Join the timer thread
     //pthread_join(timer_data.thread, NULL);
   close(sockfd);
+    #ifndef USE_AESD_CHAR_DEVICE
   remove(PATH);
+  #endif
   while (SLIST_FIRST( & head) != NULL) {
   struct slist_data_s *datap;
     SLIST_FOREACH(datap, & head, entries) {
@@ -346,8 +365,9 @@ int main(int argc, char * argv[]) {
   bool daemon_mode = false;
   openlog("aesdsocket", LOG_PID, LOG_USER); // Open syslog
   // Cleanup of PATH
+    #ifndef USE_AESD_CHAR_DEVICE
   remove(PATH); // to erase contents and the file in case of SIGKILL (kill -s 9 <pid>)
-
+#endif
   struct sigaction sa;
   sa.sa_handler = & signal_handler; // reap all dead processes
   sigemptyset( & sa.sa_mask);
@@ -434,8 +454,10 @@ int main(int argc, char * argv[]) {
   }
 
   SLIST_INIT( & head);
+    #ifndef USE_AESD_CHAR_DEVICE
   struct timer_data timer_data_t;
   pthread_create( & (timer_data_t.thread), NULL, timestamp, & timer_data_t);
+  #endif
   while (signal_received == false) 
   {
 
@@ -474,9 +496,13 @@ int main(int argc, char * argv[]) {
     }
     
   }
+  #ifndef USE_AESD_CHAR_DEVICE
   pthread_join((timer_data_t.thread), NULL);
+  #endif
   pthread_mutex_destroy( &mutex);
+  #ifndef USE_AESD_CHAR_DEVICE
   remove(PATH);
+   #endif
   shutdown(sockfd, SHUT_RDWR);
   close(sockfd);
   free(datap);

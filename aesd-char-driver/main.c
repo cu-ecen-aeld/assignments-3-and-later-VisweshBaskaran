@@ -55,7 +55,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     {
         return -EINVAL; 
     }
-    struct aesd_dev *dev = (struct aesd_dev*) filp->private_data;
+    //struct aesd_dev *dev = (struct aesd_dev*) filp->private_data;
    // struct aesd_buffer_entry *read_entry = NULL;
    
     /*if(mutex_lock(&dev->lock)!=0)
@@ -63,12 +63,13 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
      	printk(KERN_ALERT "Mutex locking failed");
        return -ERESTARTSYS;
     }*/
-	mutex_lock(&dev->lock);
-	struct aesd_buffer_entry *read_entry = aesd_circular_buffer_find_entry_offset_for_fpos(dev->buffer, (size_t)*f_pos, &entry_offset);
+	//mutex_lock(&dev->lock);
+	mutex_lock(&aesd_device.lock);
+	struct aesd_buffer_entry *read_entry = aesd_circular_buffer_find_entry_offset_for_fpos(aesd_device.buffer, (size_t)*f_pos, &entry_offset);
 
 	if(read_entry == NULL) //checking if the buffer entry is found
     	{
-        	mutex_unlock(&(dev->lock));
+        	mutex_unlock(&(aesd_device.lock));
         	return -1;
     	}
 
@@ -77,7 +78,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         if (bytes_to_read > count)
             bytes_to_read = count;          
 
-        if (copy_to_user(buf, read_entry->buffptr + entry_offset, bytes_to_read) == 0) 
+        if (copy_to_user(buf, read_entry->buffptr + entry_offset, bytes_to_read) != 0) 
         {
              printk(KERN_ALERT "copy_to_user failed\n");
              return -EFAULT;
@@ -86,7 +87,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         *f_pos += bytes_to_read;
         retval = bytes_to_read;
 
-    	mutex_unlock(&dev->lock);
+    	//mutex_unlock(&dev->lock);
+    	mutex_unlock(&aesd_device.lock);
     	return retval;
 }
 
@@ -99,12 +101,12 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     ssize_t retval = -ENOMEM;
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
     static size_t final_count = 0;
-    struct aesd_dev *dev = (struct aesd_dev*) filp->private_data;
+    //struct aesd_dev *dev = (struct aesd_dev*) filp->private_data;
    
     char *temp_buffptr = kmalloc(count, GFP_KERNEL);
     if (!temp_buffptr)
         return retval;
-    static char *final_buffptr = NULL;
+    //static char *final_buffptr = NULL;
     if (!final_buffptr) 
     {
             kfree(temp_buffptr);
@@ -141,11 +143,13 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         write_entry->buffptr = kmalloc(final_count, GFP_KERNEL);
         memcpy(write_entry->buffptr, final_buffptr, final_count);
 
-       mutex_lock(&dev->lock);
+       //mutex_lock(&dev->lock);
+       mutex_lock(&aesd_device.lock);
         const char* overwritten_buffptr = aesd_circular_buffer_add_entry(aesd_device.buffer, write_entry);
 
   
-    mutex_unlock(&dev->lock);
+    //mutex_unlock(&dev->lock);
+    mutex_unlock(&aesd_device.lock);
 
         /*If overwritten, free the overwritten entry*/
         if(overwritten_buffptr != NULL) {
