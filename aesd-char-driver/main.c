@@ -59,13 +59,13 @@ int aesd_release(struct inode *inode, struct file *filp)
 ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
-printk("In aesd_read\n");
+PDEBUG("In aesd_read\n");
     ssize_t retval = 0;
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
     ssize_t entry_offset = 0; 
     if (!filp)
     {
-    	printk("filp does not exist\n\r");
+    	PDEBUG("filp does not exist\n\r");
         return -EFAULT; 
     }
 
@@ -74,7 +74,7 @@ printk("In aesd_read\n");
 
 	if(read_entry == NULL) //checking if the buffer entry is found
     	{
-    		printk("read_entry not found\n\r");
+    		PDEBUG("read_entry not found\n\r");
         	mutex_unlock(&(aesd_device.lock));
         	return retval;
     	}
@@ -86,6 +86,7 @@ printk("In aesd_read\n");
         else
             bytes_to_read = count;          
 
+	PDEBUG("buf copy: %s\n", read_entry->buffptr + entry_offset);
         if (copy_to_user(buf, read_entry->buffptr + entry_offset, bytes_to_read) != 0) 
         {
              printk(KERN_ALERT "copy_to_user failed\n");
@@ -93,7 +94,7 @@ printk("In aesd_read\n");
         } 
         else
         {
-        printk("copy_to_user passed\r\n");
+        PDEBUG("copy_to_user passed\r\n");
         }
         
         *f_pos += bytes_to_read;
@@ -109,7 +110,7 @@ printk("In aesd_read\n");
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
-printk("In aesd_Write\n");
+    PDEBUG("In aesd_write\n");
     ssize_t retval = -ENOMEM;
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
     static size_t final_count = 0;
@@ -118,19 +119,19 @@ printk("In aesd_Write\n");
     char *temp_buffptr = kmalloc(count, GFP_KERNEL);
     if (!temp_buffptr)
     {
-    printk("temp_buffptr does not exist\n");
+    PDEBUG("temp_buffptr does not exist\n");
         return retval;
     }
     //static char *final_buffptr = NULL;
     if (!final_buffptr) 
     {
-    printk("final_buffptr does not exist\n");
+    PDEBUG("final_buffptr does not exist\n");
             kfree(temp_buffptr);
             return retval;
     }
     if (copy_from_user(temp_buffptr, buf, count) != 0) 
     {
-    	printk("copy_from_user failed\n");
+    	PDEBUG("copy_from_user failed\n");
         kfree(temp_buffptr);
         return retval;
     }

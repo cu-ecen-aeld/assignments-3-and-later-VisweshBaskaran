@@ -14,22 +14,39 @@ References:
  */
 
 #include "includes/queue.h"
+
 #include <arpa/inet.h>
+
 #include <sys/wait.h>
+
 #include <signal.h>
+
 #include <syslog.h>
+
 #include <fcntl.h>
+
 #include <sys/types.h>
+
 #include <sys/socket.h>
+
 #include <netinet/in.h>
+
 #include <netdb.h>
+
 #include <stdio.h>
+
 #include <stdlib.h>
+
 #include <unistd.h>
+
 #include <errno.h>
+
 #include <string.h>
+
 #include <stdbool.h>
+
 #include <pthread.h>
+
 #include <sys/time.h>
 
 #define PORT "9000" // Change the port to 9000
@@ -39,17 +56,19 @@ References:
 #define USE_AESD_CHAR_DEVICE 1
 
 #ifdef USE_AESD_CHAR_DEVICE
-	#define PATH "/dev/aesdchar"
+#define PATH "/dev/aesdchar"
 #else
-	#define PATH "/var/tmp/aesdsocketdata"
-#endif 
+#define PATH "/var/tmp/aesdsocketdata"
+#endif
 
 #define SYSCALL_ERROR - 1
 #define TIMESTAMP_FORMAT "%Y %b %d %H:%M:%S" // RFC 2822 compliant strftime format
 
 int sockfd; // declaring socket file descriptor as global for signal handlers
 struct slist_data_s * datap = NULL; // for iterating
+#ifndef USE_AESD_CHAR_DEVICE
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 bool signal_received = false;
 
 struct thread_data {
@@ -122,7 +141,7 @@ void log_closed_connection(struct sockaddr_storage their_addr) {
  * @param thread_param A pointer to thread-specific data (struct thread_data) that may be used in the function.
  * @return NULL
  */
- #ifndef USE_AESD_CHAR_DEVICE
+#ifndef USE_AESD_CHAR_DEVICE
 void * timestamp(void * thread_param) {
   if (thread_param == NULL) {
     // Handle invalid input gracefully
@@ -146,7 +165,7 @@ void * timestamp(void * thread_param) {
     if ((tm = localtime( & tv.tv_sec)) != NULL) {
       strftime(fmt, sizeof(fmt), "timestamp:%Y %b %d %H:%M:%S\n", tm);
     }
-  
+
     if (pthread_mutex_lock( & mutex) != 0) {
       perror("mutex_lock");
       break;
@@ -189,7 +208,7 @@ void * threadfunc(void * thread_param) {
     perror("NULL params\n");
     return NULL;
   }
-   struct thread_data * thread_func_args = (struct thread_data * ) thread_param;
+  struct thread_data * thread_func_args = (struct thread_data * ) thread_param;
   log_accepted_connection(thread_func_args -> client_addr);
   while (1) {
     char * recv_buffer = (char * ) malloc(MAX_PACKET_SIZE);
@@ -213,6 +232,7 @@ void * threadfunc(void * thread_param) {
       goto exit_branch;
     }
     #endif
+   // ssize_t 
     if (write(file_fd, recv_buffer, bytes_recvd) == SYSCALL_ERROR) {
       perror("write");
       //printf("bad file descriptor: %d", thread_func_args->file_fd);
@@ -220,14 +240,13 @@ void * threadfunc(void * thread_param) {
       free(recv_buffer);
       goto exit_branch;
     }
-      #ifndef USE_AESD_CHAR_DEVICE
+    #ifndef USE_AESD_CHAR_DEVICE
     if (pthread_mutex_unlock( & mutex) != 0) {
       perror("mutex unlock\n");
       free(recv_buffer);
       goto exit_branch;
     }
     #endif
-    // Check if the last character received is a newline
     if (strchr(recv_buffer, '\n') != NULL) {
       free(recv_buffer);
       break;
@@ -244,13 +263,15 @@ void * threadfunc(void * thread_param) {
     goto exit_branch;
   }
   // Read data from the file into the send_buffer
-  bytes_read = read(file_fd, send_buffer, MAX_PACKET_SIZE);
+  while((bytes_read = read(file_fd, send_buffer, MAX_PACKET_SIZE)) > 0)
+  {
   if (bytes_read == SYSCALL_ERROR) {
     perror("read");
     free(send_buffer);
     goto exit_branch;
   }
   send(thread_func_args -> client_sockfd, send_buffer, bytes_read, 0);
+  }
   // Log the closed connection
   log_closed_connection(thread_func_args -> client_addr);
 
@@ -274,14 +295,14 @@ void exit_gracefully() {
   syslog(LOG_INFO, "Caught signal, exiting");
   //closelog();
   // Close the socket and delete the file
-    // Join the timer thread
-    //pthread_join(timer_data.thread, NULL);
+  // Join the timer thread
+  //pthread_join(timer_data.thread, NULL);
   close(sockfd);
-    #ifndef USE_AESD_CHAR_DEVICE
+  #ifndef USE_AESD_CHAR_DEVICE
   remove(PATH);
   #endif
   while (SLIST_FIRST( & head) != NULL) {
-  struct slist_data_s *datap;
+    struct slist_data_s * datap;
     SLIST_FOREACH(datap, & head, entries) {
       close(datap -> connection_data.client_sockfd);
       pthread_join(datap -> connection_data.thread, NULL);
@@ -289,9 +310,10 @@ void exit_gracefully() {
       free(datap);
     }
   }
-  
-    pthread_mutex_destroy(&mutex);
-    closelog();
+  #ifndef USE_AESD_CHAR_DEVICE
+  pthread_mutex_destroy( & mutex);
+  #endif
+  closelog();
   //exit(EXIT_SUCCESS);
 }
 
@@ -354,8 +376,10 @@ void signal_handler(int sig) {
   }
 }
 
-int main(int argc, char * argv[]) {
+int main(int argc, char * argv[]) { 
+  #ifndef USE_AESD_CHAR_DEVICE
   pthread_mutex_init( & mutex, NULL);
+  #endif
   struct addrinfo hints, * servinfo, * p;
   struct sockaddr_storage their_addr;
   socklen_t sin_size = sizeof(their_addr);
@@ -365,9 +389,9 @@ int main(int argc, char * argv[]) {
   bool daemon_mode = false;
   openlog("aesdsocket", LOG_PID, LOG_USER); // Open syslog
   // Cleanup of PATH
-    #ifndef USE_AESD_CHAR_DEVICE
+  #ifndef USE_AESD_CHAR_DEVICE
   remove(PATH); // to erase contents and the file in case of SIGKILL (kill -s 9 <pid>)
-#endif
+  #endif
   struct sigaction sa;
   sa.sa_handler = & signal_handler; // reap all dead processes
   sigemptyset( & sa.sa_mask);
@@ -375,13 +399,17 @@ int main(int argc, char * argv[]) {
 
   if (sigaction(SIGINT, & sa, NULL) == -1) {
     closelog();
+    #ifndef USE_AESD_CHAR_DEVICE
     pthread_mutex_destroy( & mutex);
+    #endif
     perror("sigaction");
     exit(EXIT_FAILURE);
   }
   if (sigaction(SIGTERM, & sa, NULL) == -1) {
     closelog();
+    #ifndef USE_AESD_CHAR_DEVICE
     pthread_mutex_destroy( & mutex);
+    #endif
     perror("sigaction");
     exit(EXIT_FAILURE);
   }
@@ -404,7 +432,9 @@ int main(int argc, char * argv[]) {
   // Use getaddrinfo to retrieve a list of address structures that match the specified criteria.
   if ((rv = getaddrinfo(NULL, PORT, & hints, & servinfo)) != 0) {
     closelog();
+    #ifndef USE_AESD_CHAR_DEVICE
     pthread_mutex_destroy( & mutex);
+    #endif
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
     exit(EXIT_FAILURE);
   }
@@ -420,7 +450,9 @@ int main(int argc, char * argv[]) {
     // Allow reusing the address/port even if it's in TIME_WAIT state.
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, & yes, sizeof(int)) == -1) {
       closelog();
+      #ifndef USE_AESD_CHAR_DEVICE
       pthread_mutex_destroy( & mutex);
+      #endif
       perror("setsockopt");
       exit(EXIT_FAILURE);
     }
@@ -441,25 +473,28 @@ int main(int argc, char * argv[]) {
 
   if (p == NULL) {
     closelog();
+    #ifndef USE_AESD_CHAR_DEVICE
     pthread_mutex_destroy( & mutex);
+    #endif
     fprintf(stderr, "server: failed to bind\n");
     exit(EXIT_FAILURE);
   }
 
   if (listen(sockfd, BACKLOG) == -1) {
     closelog();
+    #ifndef USE_AESD_CHAR_DEVICE
     pthread_mutex_destroy( & mutex);
+    #endif
     perror("listen");
     exit(EXIT_FAILURE);
   }
 
   SLIST_INIT( & head);
-   #ifndef USE_AESD_CHAR_DEVICE
+  #ifndef USE_AESD_CHAR_DEVICE
   struct timer_data timer_data_t;
   pthread_create( & (timer_data_t.thread), NULL, timestamp, & timer_data_t);
   #endif
-  while (signal_received == false) 
-  {
+  while (signal_received == false) {
 
     int client_sockfd = accept(sockfd, (struct sockaddr * ) & their_addr, & sin_size);
     if (client_sockfd == -1) {
@@ -471,7 +506,7 @@ int main(int argc, char * argv[]) {
     datap -> connection_data.client_sockfd = client_sockfd;
     datap -> connection_data.client_addr = their_addr;
     datap -> connection_data.thread_complete_success = false;
-     SLIST_INSERT_HEAD(&head, datap, entries);
+    SLIST_INSERT_HEAD( & head, datap, entries);
     if (pthread_create( & (datap -> connection_data.thread), NULL, threadfunc, & datap -> connection_data) != 0) {
       perror("pthread_create");
       break;
@@ -487,22 +522,20 @@ int main(int argc, char * argv[]) {
 
   }
 
-  while (SLIST_FIRST( &head) != NULL) {
+  while (SLIST_FIRST( & head) != NULL) {
     SLIST_FOREACH(datap, & head, entries) {
       close(datap -> connection_data.client_sockfd);
       pthread_join(datap -> connection_data.thread, NULL);
       SLIST_REMOVE( & head, datap, slist_data_s, entries);
       free(datap);
     }
-    
+
   }
   #ifndef USE_AESD_CHAR_DEVICE
   pthread_join((timer_data_t.thread), NULL);
-  #endif
-  pthread_mutex_destroy( &mutex);
-  #ifndef USE_AESD_CHAR_DEVICE
+  pthread_mutex_destroy( & mutex);
   remove(PATH);
-   #endif
+  #endif
   shutdown(sockfd, SHUT_RDWR);
   close(sockfd);
   free(datap);
