@@ -62,11 +62,16 @@ struct aesd_buffer_entry * aesd_circular_buffer_find_entry_offset_for_fpos(struc
  * Any necessary locking must be handled by the caller
  * Any memory referenced in @param add_entry must be allocated by and/or must have a lifetime managed by the caller.
  */
-void aesd_circular_buffer_add_entry(struct aesd_circular_buffer * buffer,
+const char* aesd_circular_buffer_add_entry(struct aesd_circular_buffer * buffer,
   const struct aesd_buffer_entry * add_entry) {
   //Checking if the pointer buffer and the pointer add_entry are null pointers    
   if (!buffer || !add_entry) {
-    return;
+    return NULL;
+  }
+  const char* buffptr_removed = NULL;
+  if(buffer -> full) 
+  {
+  buffptr_removed = buffer->entry[buffer->out_offs].buffptr; //Pointer to be returned with the buffer that was removed. When adding to cb when its already full
   }
   // Adding the new entry to the buffer at in_offs
   buffer -> entry[buffer -> in_offs] = * add_entry;
@@ -83,6 +88,8 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer * buffer,
   if (buffer -> in_offs == buffer -> out_offs) {
     buffer -> full = true;
   }
+  
+  return  buffptr_removed;
 }
 
 /**
