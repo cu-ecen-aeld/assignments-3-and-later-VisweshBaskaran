@@ -14,40 +14,24 @@ References:
  */
 
 #include "includes/queue.h"
-
 #include <arpa/inet.h>
-
 #include <sys/wait.h>
-
 #include <signal.h>
-
 #include <syslog.h>
-
 #include <fcntl.h>
-
 #include <sys/types.h>
-
 #include <sys/socket.h>
-
 #include <netinet/in.h>
-
 #include <netdb.h>
-
 #include <stdio.h>
-
 #include <stdlib.h>
-
 #include <unistd.h>
-
 #include <errno.h>
-
 #include <string.h>
-
 #include <stdbool.h>
-
 #include <pthread.h>
-
 #include <sys/time.h>
+#include "../aesd-char-driver/aesd_ioctl.h"
 
 #define PORT "9000" // Change the port to 9000
 #define BACKLOG 10 // How many pending connections queue will hold
@@ -65,6 +49,7 @@ References:
 #define TIMESTAMP_FORMAT "%Y %b %d %H:%M:%S" // RFC 2822 compliant strftime format
 
 int sockfd; // declaring socket file descriptor as global for signal handlers
+int file_fd;
 struct slist_data_s * datap = NULL; // for iterating
 #ifndef USE_AESD_CHAR_DEVICE
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -190,20 +175,20 @@ void * timestamp(void * thread_param) {
 
 /**
  * @brief Thread function to handle client connections and log data to a file.
- *
+ * @reference updated for A9 based on Ashwin Ravindra's implementation.
  * @param thread_param A pointer to thread-specific data (struct thread_data) that may be used in the function.
  * @return EXIT_FAILURE on failure else NULL
+ 
  */
 void * threadfunc(void * thread_param) {
 
-  int file_fd = open(PATH, O_RDWR | O_APPEND | O_CREAT, 0664);
-  if (file_fd == -1) {
-    syslog(LOG_ERR, "Open failed: %s", strerror(errno));
-    perror("open");
-    exit(EXIT_FAILURE);
-  }
   ssize_t bytes_read;
   ssize_t bytes_recvd;
+  bool is_newline = false;
+  bool is_ioctl = false;
+  #ifndef USE_AESD_CHAR_DEVICE
+  bool is_locked = false;
+  #endif
   if (NULL == thread_param) {
     perror("NULL params\n");
     return NULL;
@@ -222,7 +207,7 @@ void * threadfunc(void * thread_param) {
     if (bytes_recvd == SYSCALL_ERROR) {
       perror("recv");
       syslog(LOG_ERR, "recv failed: %s", strerror(errno));
-      free(recv_buffer); // Don't forget to free the buffer on error
+      free(recv_buffer);
 
     }
     #ifndef USE_AESD_CHAR_DEVICE
@@ -231,60 +216,127 @@ void * threadfunc(void * thread_param) {
       free(recv_buffer);
       goto exit_branch;
     }
+    else
+    is_locked = true;
     #endif
-   // ssize_t 
-    if (write(file_fd, recv_buffer, bytes_recvd) == SYSCALL_ERROR) {
-      perror("write");
-      //printf("bad file descriptor: %d", thread_func_args->file_fd);
-      syslog(LOG_ERR, "write failed: %s", strerror(errno));
-      free(recv_buffer);
-      goto exit_branch;
+    if (memchr(recv_buffer, '\n', bytes_recvd) != NULL) {
+      is_newline = true;
     }
-    #ifndef USE_AESD_CHAR_DEVICE
-    if (pthread_mutex_unlock( & mutex) != 0) {
-      perror("mutex unlock\n");
-      free(recv_buffer);
-      goto exit_branch;
-    }
-    #endif
-    if (strchr(recv_buffer, '\n') != NULL) {
-      free(recv_buffer);
-      break;
-    }
-  }
+    if (is_newline == true) {
+      if (strncmp(recv_buffer, "AESDCHAR_IOCSEEKTO:", 19) == 0) {
+        is_ioctl = true;
+        struct aesd_seekto seekto;
+        sscanf(recv_buffer, "AESDCHAR_IOCSEEKTO:%d,%d", & seekto.write_cmd, & seekto.write_cmd_offset);
+        file_fd = open(PATH, O_RDWR, 0666);
+        if (file_fd == -1) {
+          syslog(LOG_ERR, "Open failed: %s", strerror(errno));
+          free(recv_buffer);
+          perror("open");
+          #ifndef USE_AESD_CHAR_DEVICE
+  	  if(is_locked == true)
+  	  {
+          if (pthread_mutex_unlock( & mutex) != 0) {
+          perror("mutex unlock\n");
+          free(recv_buffer);
+          goto exit_branch;
+      	   }
+      	   else
+      	   is_locked = false;
+  	   }
+  	  #endif
+          exit(EXIT_FAILURE);
+        }
+        if (ioctl(file_fd, AESDCHAR_IOCSEEKTO, & seekto) != 0) {
+          syslog(LOG_ERR, "ioctl failed: %s", strerror(errno));
+        }
 
-  // Move the file cursor to the beginning of the file
-  lseek(file_fd, 0, SEEK_SET);
-  char * send_buffer = (char * ) malloc(MAX_PACKET_SIZE);
-  if (send_buffer == NULL) {
-    syslog(LOG_ERR, "Malloc failed: %s", strerror(errno));
-    perror("malloc failed");
-    free(send_buffer);
-    goto exit_branch;
-  }
-  // Read data from the file into the send_buffer
-  while((bytes_read = read(file_fd, send_buffer, MAX_PACKET_SIZE)) > 0)
-  {
-  if (bytes_read == SYSCALL_ERROR) {
-    perror("read");
-    free(send_buffer);
-    goto exit_branch;
-  }
-  send(thread_func_args -> client_sockfd, send_buffer, bytes_read, 0);
+      } else {
+        file_fd = open(PATH, O_RDWR | O_APPEND | O_CREAT, 0666);
+        if (file_fd == -1) {
+          syslog(LOG_ERR, "Open failed: %s", strerror(errno));
+          free(recv_buffer);
+          perror("open");
+          #ifndef USE_AESD_CHAR_DEVICE
+  	  if(is_locked == true)
+  	  {
+          if (pthread_mutex_unlock( & mutex) != 0) {
+          perror("mutex unlock\n");
+          free(recv_buffer);
+          goto exit_branch;
+      	   }
+      	   else
+      	   is_locked = false;
+  	   }
+  	  #endif
+          exit(EXIT_FAILURE);
+
+        }
+        if (write(file_fd, recv_buffer, bytes_recvd) == SYSCALL_ERROR) {
+          perror("write");
+          syslog(LOG_ERR, "write failed: %s", strerror(errno));
+          free(recv_buffer);
+          goto exit_branch;
+        }
+        close(file_fd);
+      }
+
+      if (!is_ioctl) {
+        file_fd = open(PATH, O_RDONLY, 0666);
+      }
+      char * send_buffer = (char * ) malloc(MAX_PACKET_SIZE);
+      if (send_buffer == NULL) {
+        syslog(LOG_ERR, "Malloc failed: %s", strerror(errno));
+        perror("malloc failed");
+        free(send_buffer);
+        goto exit_branch;
+      }
+      // Read data from the file into the send_buffer
+      while ((bytes_read = read(file_fd, send_buffer, MAX_PACKET_SIZE)) > 0) {
+        if (bytes_read == SYSCALL_ERROR) {
+          perror("read");
+          free(send_buffer);
+          goto exit_branch;
+        }
+        send(thread_func_args -> client_sockfd, send_buffer, bytes_read, 0);
+      }
+
+      #ifndef USE_AESD_CHAR_DEVICE
+      if (pthread_mutex_unlock( & mutex) != 0) {
+        perror("mutex unlock\n");
+        free(recv_buffer);
+        goto exit_branch;
+      }
+      else
+      is_locked = false;
+      #endif
+    }
+
   }
   // Log the closed connection
   log_closed_connection(thread_func_args -> client_addr);
 
   exit_branch:
+  #ifndef USE_AESD_CHAR_DEVICE
+  if(is_locked == true)
+  {
+  if (pthread_mutex_unlock( & mutex) != 0) {
+        perror("mutex unlock\n");
+        free(recv_buffer);
+        goto exit_branch;
+      }
+      else
+      is_locked = false;
+  }
+  #endif
     // close client socket file descriptor
     close(thread_func_args -> client_sockfd);
   thread_func_args -> thread_complete_success = true;
-  close(file_fd);
-  if (send_buffer)
-    free(send_buffer);
+  //close(file_fd);
+  /*if (send_buffer)*/
   return NULL; /*for avoiding "error: control reaches end of non-void function"*/
 
 }
+
 /**
  * @brief Gracefully exits the program, cleaning up resources and closing connections.
  * @param
@@ -376,7 +428,7 @@ void signal_handler(int sig) {
   }
 }
 
-int main(int argc, char * argv[]) { 
+int main(int argc, char * argv[]) {
   #ifndef USE_AESD_CHAR_DEVICE
   pthread_mutex_init( & mutex, NULL);
   #endif
